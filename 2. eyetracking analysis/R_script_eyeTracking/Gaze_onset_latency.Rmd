@@ -1,0 +1,54 @@
+---
+title: "Gaze_departure_latency"
+
+date: "2026-08-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+library(lme4)
+library(lmerTest)
+library(effectsize)
+library(emmeans)
+library(dplyr)
+
+
+df_departure <- read.csv("./Dataframes-used/departure_latency_data.csv")
+
+df_departure$participant <- as.factor(df_departure$participant)
+df_departure$cue        <- as.factor(df_departure$condition)
+df_departure$position   <- as.factor(df_departure$position)
+
+df_front_EG <- df_departure[df_departure$position == "Front", ]
+df_rear_EG  <- df_departure[df_departure$position == "Rear",  ]
+
+
+# ── General anova ──────────────────────────────────────
+m_EG <- lmer(departure_ms ~ cue * nb_dist *position + (1 | participant),
+                data = df_departure)
+anova(m_EG, type = 2)
+effectsize::eta_squared(m_EG)
+
+#front
+m_front_EG <- lmer(departure_ms ~ cue * nb_dist + (1 | participant),
+                data = df_front_EG)
+anova(m_front_EG, type = 2)
+effectsize::eta_squared(m_front_EG)
+
+#Rear
+
+m_rear_EG <- lmer(departure_ms ~ cue * nb_dist + (1 | participant),
+               data = df_rear_EG)
+anova(m_rear_EG, type = 2)
+effectsize::eta_squared(m_rear_EG)
+
+# Pairwise distractor comparisons
+emmeans(m_rear_EG,  pairwise ~ nb_dist, adjust = "None")
+emmeans(m_front_EG,  pairwise ~ nb_dist, adjust = "None")
+
+emmeans(m_EG,  pairwise ~ position, adjust = "None")
+
+```
+
+

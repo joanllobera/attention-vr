@@ -1,0 +1,70 @@
+---
+title: "early_gaze_analysis"
+
+date: "2026-04-28"
+output: html_document
+---
+
+
+```{r packages}
+library(lme4)
+library(lmerTest)  
+library(emmeans)
+library(psych)
+library(afex)
+library(dplyr)
+```
+
+
+
+``` {r, early gaze raw}
+library(lme4)
+library(lmerTest)
+library(effectsize)
+library(emmeans)
+
+df_early_gaze <- read.csv("./Dataframes-used/raw_yaw_for_R.csv")
+
+df_early_gaze$participant <- as.factor(df_early_gaze$participant)
+df_early_gaze$cue        <- as.factor(df_early_gaze$condition)
+df_early_gaze$position   <- as.factor(df_early_gaze$position)
+
+df_front_EG <- df_early_gaze[df_early_gaze$position == "Front", ]
+df_rear_EG  <- df_early_gaze[df_early_gaze$position == "Rear",  ]
+
+# ── General anova ──────────────────────────────────────
+m_EG <- lmer(rEyeYaw ~ cue * nb_dist *position + (1 | participant),
+                data = df_early_gaze)
+anova(m_EG, type = 2)
+effectsize::eta_squared(m_EG)
+
+#front
+m_front_EG <- lmer(rEyeYaw ~ cue * nb_dist + (1 | participant),
+                data = df_front_EG)
+anova(m_front_EG, type = 2)
+effectsize::eta_squared(m_front_EG)
+
+#Rear
+
+m_rear_EG <- lmer(rEyeYaw ~ cue * nb_dist + (1 | participant),
+               data = df_rear_EG)
+anova(m_rear_EG, type = 2)
+effectsize::eta_squared(m_rear_EG)
+
+# Pairwise distractor comparisons
+emmeans(m_rear_EG,  pairwise ~ nb_dist, adjust = "None")
+emmeans(m_rear_EG,  pairwise ~ cue, adjust = "None")
+
+
+
+```
+
+
+
+
+
+
+
+
+
+

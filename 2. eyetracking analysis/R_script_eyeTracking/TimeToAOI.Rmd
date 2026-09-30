@@ -1,0 +1,144 @@
+---
+title: "Dwell/Gaze_analysis"
+
+date: "2026-04-23"
+output: html_document
+---
+
+```{r packages}
+library(readr)
+library(lme4)
+library(lmerTest)  
+library(emmeans)
+library(psych)
+library(afex)
+library(dplyr)
+```
+1. Import data set and all package required
+
+```{r setup }
+#dataframes
+df_entry <- read_csv("./Dataframes-used/df_dwell_raw.csv")
+
+names(df_entry)[names(df_entry) == "condition"] <- "cue"
+
+#Rename distractors to have them ordered
+#order of distractors for plot --- IMPORTANT to have them displayed in the right distractor order
+df_entry$nb_dist <- factor(df$nb_dist,
+                                      levels = c("Zero", "One_near", "One_far", "Three"),
+                                      labels = c("0", "1 Near", "1 Far", "3"))
+
+#Make factors
+df_entry$participant <- as.factor(df$participant)
+df_entry$cue   <- as.factor(df$cue)
+df_entry$nb_dist     <- as.factor(df$nb_dist)
+df_entry$position    <- as.factor(df$position)
+
+#dataframes 
+df_front_entry <- df_entry[df_entry$position == "Front", ]
+df_rear_entry <- df_entry[df_entry$position == "Rear", ]
+
+```
+
+```{r anova global}
+
+m_entry <- lmer(first_entry_ms ~ cue * position * nb_dist + (1 | participant), data = df_entry)
+anova(m_entry, type = 2)
+effectsize::eta_squared(m_entry)
+```
+/!\ Value missing for participant 21 ! need to check Invalid Rear Three
+Answer = participant 21 only got one good answer for that condition, in which the gaze does not reach the target, hence the NaN
+So instead, using lmer package. 
+
+```{r anova for front }
+# ── FRONT ────────────────────────────────────────────────
+describeBy(df_front_entry$first_entry_ms, df_front_entry$cue)
+describeBy(df_front_entry$first_entry_ms, df_front_entry$nb_dist)
+
+# LMM 
+m_entry_front <- lmer(first_entry_ms ~ nb_dist * cue + (1 | participant),
+                     data = df_front_entry)
+anova(m_entry_front, type = 2)
+effectsize::eta_squared(m_entry_front)
+
+```
+
+```{r anova for rear}
+# ── REAR ────────────────────────────────────────────────
+describeBy(df_rear_entry$first_entry_ms, df_rear_entry$cue)
+describeBy(df_rear_entry$first_entry_ms, df_rear_entry$nb_dist)
+
+# LMM 
+m_entry_rear <- lmer(first_entry_ms ~ nb_dist * cue + (1 | participant),
+                     data = df_rear_entry)
+anova(m_entry_rear, type = 2)
+effectsize::eta_squared(m_entry_rear)
+
+
+```
+
+```{r Post Hoc}
+# Post-hoc for cue effect
+emmeans(m_entry_front, pairwise ~ cue)
+emmeans(m_entry_rear,  pairwise ~ cue)
+
+# Post-hoc for nb_dist effect
+emmeans(m_entry_front, pairwise ~ nb_dist, adjust = "none")
+emmeans(m_entry_rear,  pairwise ~ nb_dist, adjust = "none")
+
+# Post-hoc for interaction
+emmeans(m_entry_front, pairwise ~ nb_dist | cue, adjust = "none")
+emmeans(m_entry_rear,  pairwise ~ nb_dist | cue, adjust = "none")
+
+```
+Now analysing if we have the use of peripheral vision
+Testing on 50° and 40° roi
+need to change just the number
+
+```{r, Peripheral analysis using df_peripheral }
+#dataframes
+df_peripheral <- read_csv("C:/Users/deschane/Documents/abc1_data/htc_vive_vision_test/full-notebook-analysis-article/2. eyetracking analysis/df_peripheral.csv")
+
+names(df_peripheral)[names(df_peripheral) == "condition"] <- "cue"
+
+#Rename distractors to have them ordered
+#order of distractors for plot --- IMPORTANT to have them displayed in the right distractor order
+df_peripheral$nb_dist <- factor(df_peripheral$nb_dist,
+                                      levels = c("Zero", "One_near", "One_far", "Three"),
+                                      labels = c("0", "1 Near", "1 Far", "3"))
+
+#Make factors
+df_peripheral$participant <- as.factor(df_peripheral$participant)
+df_peripheral$cue   <- as.factor(df_peripheral$cue)
+df_peripheral$nb_dist     <- as.factor(df_peripheral$nb_dist)
+df_peripheral$position    <- as.factor(df_peripheral$position)
+
+#dataframes 
+df_front_periph <- df_peripheral[df_peripheral$position == "Front", ]
+df_rear_periph <- df_peripheral[df_peripheral$position == "Rear", ]
+
+```
+
+```{r Global anova }
+m_entry_periph <- lmer(first_entry_40deg_ms ~ cue * position * nb_dist + (1 | participant), data = df_peripheral)
+anova(m_entry_periph, type = 2)
+effectsize::eta_squared(m_entry_periph)
+```
+
+```{r anova front}
+# ── FRONT ────────────────────────────────────────────────
+
+# LMM 
+m_entry_front_periph <- lmer(first_entry_40deg_ms ~ nb_dist * cue + (1 | participant),data = df_front_periph)
+anova(m_entry_front_periph, type = 2)
+effectsize::eta_squared(m_entry_front_periph)
+
+
+```
+
+```{r anova rear}
+# LMM 
+m_entry_rear_periph <- lmer(first_entry_40deg_ms ~ nb_dist * cue + (1 | participant),data = df_rear_periph)
+anova(m_entry_rear_periph, type = 2)
+effectsize::eta_squared(m_entry_rear_periph)
+```

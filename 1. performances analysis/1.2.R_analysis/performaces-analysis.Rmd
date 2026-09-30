@@ -1,0 +1,862 @@
+---
+title: "performances-analysis"
+
+date: "2025-12-17"
+output: html_document
+---
+
+```{r setup libraries, echo = FALSE}
+library(readxl)
+library(lme4)        #Multilevel models
+library(lmerTest)    #Multilevel ANOVA
+library(car)         #Regression tools
+library(emmeans)     #Follow-up contrasts
+library(visreg)      #Effect plotting
+library(MuMIn)       #Multilevel R-squared
+library(DHARMa)      #Model diagnostics
+library(readr)
+library(sjstats)
+library(psych)
+library(readxl)
+library(ez)
+library(ggplot2)
+library(ggdist)
+library(dplyr)
+library(gghalves)
+library(ggpubr)  # for stat_pvalue_manual or stat_compare_means
+library(patchwork)
+library(emmeans)
+library(cowplot)
+library(writexl)
+library(afex) #for anova
+library(effectsize)
+```
+
+```{r Data frames}
+############ FULL df for accuracy
+df_accuracy <- read_excel("./dataframes/df_accuracy.xlsx")
+
+#order of distractors for plot --- IMPORTANT to have them displayed in the right distractor order
+df_accuracy$distractor <- factor(df_accuracy$distractor,
+                             levels = c("Zero", "One_Near", "One_Far", "Three"),
+                             labels = c("0", "1 Near", "1 Far", "3"))
+
+#df accuracy by position
+df_acc_front <- subset(df_accuracy,  position == "Front")
+df_acc_rear <- subset(df_accuracy,  position == "Rear")
+df_acc_valid_rear <- subset(df_acc_rear,  cue == "Valid")
+df_acc_invalid_rear <- subset(df_acc_rear,  cue == "Invalid")
+
+#df accuracy with distractors categorized (One near and three in Present; one far and zero in Absent)
+df_recat_acc <- read_excel("C:/Users/deschane/Documents/abc1_data/htc_vive_vision_test/full-notebook-analysis-article/1. performences analysis/1.1. data processing/dataframes/df_recat_acc.xlsx")
+df_front_acc_recat <-  subset(df_recat_acc,  position == "Front")
+
+########### FULL df for reaction time : 
+df_success_trials <- read_excel("C:/Users/deschane/Documents/abc1_data/htc_vive_vision_test/full-notebook-analysis-article/1. performences analysis/1.1. data processing/dataframes/df_success_trials.xlsx")
+
+#order of distractors for plot --- IMPORTANT to have them displayed in the right distractor order
+df_success_trials$distractor <- factor(df_success_trials$distractor,
+                                      levels = c("Zero", "One_Near", "One_Far", "Three"),
+                                      labels = c("0", "1 Near", "1 Far", "3"))
+#df by cue
+df_RT_front_valid <- subset(df_success_trials,  cue == "Valid")
+#dfs by position
+df_RT_front <- subset(df_success_trials,  position == "Front")
+df_RT_rear <- subset(df_success_trials,  position == "Rear")
+#by cue * position
+df_RT_front_inv <- subset(df_RT_front,  cue == "Invalid")
+df_RT_front_val <- subset(df_RT_front,  cue == "Valid")
+df_RT_rear_val <- subset(df_RT_rear,  cue == "Valid")
+df_RT_rear_inv <- subset(df_RT_rear,  cue == "Invalid")
+
+#df front distractor recategorization
+df_recategorized_RT_front <- df_RT_front
+
+df_recategorized_RT_front$distractor_react <- ifelse(
+  df_recategorized_RT_front$distractor %in% c("1 Near", "3"),
+  "Present",
+  ifelse(df_recategorized_RT_front$distractor %in% c("1 Far", "0"),
+         "Absent",
+         NA)
+)
+############################################ BIG PROBLEM IN THE RECATEGORIZATION
+print("done")
+```
+```{r Figure 4. Response time difference depending on cue and position ---------- violin plot}
+# Compute means
+mean_summary <- df_success_trials %>%
+  group_by(cue, position) %>%
+  summarise(mean_RT = mean(responseTime, na.rm = TRUE), .groups = "drop")
+
+# Shared dodge
+pd <- position_dodge(width = 0.7)
+
+p <- ggplot(
+  df_success_trials,
+  aes(x = cue, y = responseTime, fill = position, color = position)
+) +
+  
+  # Half-eye cloud (OFFSET CONTROL HERE)
+  ggdist::stat_halfeye(
+    side = "right",
+    adjust = 0.7,
+    width = 0.5,
+    .width = 0,
+    justification = -0.35,   # <- shift clouds relative to dots
+    point_colour = NA,
+    alpha = 0.8,
+    position = pd
+  ) +
+  
+  # Raw data (rain)
+  geom_point(
+    position = position_jitterdodge(
+      jitter.width = 0.1,
+      dodge.width = 0.7
+    ),
+    alpha = 0.3,
+    size = 1.5
+  ) +
+  
+  # Boxplot (centered)
+  geom_boxplot(
+    aes(group = interaction(cue, position)),
+    position = pd,
+    width = 0.15,
+    alpha = 0.5,
+    color = "black",
+    outlier.shape = NA
+  ) +
+  
+  # Mean connecting lines (aligned)
+  geom_line(
+    data = mean_summary,
+    aes(y = mean_RT, group = position),
+    position = pd,
+    linewidth = 1,
+    alpha = 0.7,
+    color = "black",
+  ) +
+  
+  theme_classic(base_size = 13) +
+  labs(
+    title = "Response Time by Cue and Position",
+    x = "Cue",
+    y = "Response Time (s)",
+    color = "Position",
+    fill = "Position"
+  ) +
+  theme(
+    legend.position = "top",
+    plot.title = element_text(hjust = 0.5)
+  ) +
+  scale_color_manual(values = c("Front" = "#00FFFF", "Rear" = "#FF4500")) +
+  scale_fill_manual(values = c("Front" = "#00FFFF", "Rear" = "#FF4500"))
+
+print(p)
+```
+
+
+```{r Figure 4. Response time difference depending on cue and position}
+summary_df <- df_success_trials %>%
+  group_by(cue, position) %>%
+  summarise(
+    mean_RT = mean(responseTime, na.rm = TRUE),
+    sd_RT   = sd(responseTime, na.rm = TRUE),
+    n       = n(),
+    se_RT   = sd_RT / sqrt(n),
+    ci_low  = mean_RT - qt(.975, n - 1) * se_RT,
+    ci_high = mean_RT + qt(.975, n - 1) * se_RT,
+    .groups = "drop"
+  )
+p <- ggplot() +
+  # Raw individual points
+  geom_point(
+    data = df_success_trials,
+    aes(x = cue, y = responseTime, color = position),
+    position = position_jitterdodge(
+      jitter.width = 0.15,
+      dodge.width = 0.2
+    ),
+    alpha = 0.2,
+    size = 1.5
+  ) +
+  
+  # Lines connecting raw means
+  geom_line(
+    data = summary_df,
+    aes(x = cue, y = mean_RT, group = position, color = position),
+    position = position_dodge(0.2),
+    linewidth = 1
+  ) +
+  
+  # Points for raw means
+  geom_point(
+    data = summary_df,
+    aes(x = cue, y = mean_RT, color = position),
+    position = position_dodge(0.2),
+    size = 3
+  ) +
+  
+  # Raw 95% CI error bars
+  geom_errorbar(
+    data = summary_df,
+    aes(
+      x = cue,
+      y = mean_RT,
+      ymin = ci_low,
+      ymax = ci_high,
+      group = position   # keep grouping for dodging
+    ),
+    color = "black",     # fixed color → black
+    width = 0.1,
+    position = position_dodge(0.2),
+    linewidth = 0.5
+  ) +
+  
+  theme_classic(base_size = 13) +
+  labs(
+    title = "Response Time by Cue and Position",
+    x = "Cue",
+    y = "Response Time (s)",
+    color = "Position"
+  ) +
+  theme(
+    legend.position = "top",
+    plot.title = element_text(hjust = 0.5)
+  ) +
+  scale_color_manual(values = c("Front" = "#00FFFF", "Rear" = "#FF4500"))
+
+print(p)
+```
+
+```{r Figure 5. Response time depending on distractor (valid trials)}
+summary_distractor <- df_success_trials %>%
+  filter(cue == "Invalid") %>%   # optional, only valid trials
+  group_by(distractor, position) %>%
+  summarise(
+    median_RT = median(responseTime, na.rm = TRUE),
+    sd_RT     = sd(responseTime, na.rm = TRUE),
+    n         = n(),
+    se_RT     = sd_RT / sqrt(n),
+    ci_low    = median_RT - qt(.975, n - 1) * se_RT,
+    ci_high   = median_RT + qt(.975, n - 1) * se_RT,
+    .groups = "drop"
+  )
+
+#plot
+
+p_distractor <- ggplot(
+  df_success_trials %>% filter(cue == "Invalid"),
+  aes(x = distractor, y = responseTime, fill = position)
+) +
+  
+  # Boxplots
+  geom_boxplot(
+    width = 0.2,
+    outlier.shape = NA,
+    alpha = 1,
+    position = position_dodge(width = 0.7)
+  ) +
+  
+  # Half-eye densities
+  stat_halfeye(
+    side = "right",
+    adjust = 0.7,
+    width = 0.5,
+    .width = 0,
+    justification = -0.3,
+    point_colour = NA,
+    alpha = 1,
+    aes(fill = position),
+    position = position_dodge(width = 0.7)
+  ) +
+  
+  # Jittered points
+  geom_point(
+    aes(color = position),
+    alpha = 0.5,
+    size = 1.5,
+    position = position_jitterdodge(
+      jitter.width = 0.1,
+      dodge.width = 0.7,
+      seed = 123
+    )
+  ) +
+  
+  # Median lines
+  geom_line(
+    data = summary_distractor,
+    aes(x = distractor, y = median_RT, group = position),
+    color = "black",
+    linewidth = 1,
+    position = position_dodge(width = 0.7),
+    inherit.aes = FALSE
+  ) +
+  
+  # Styling
+  theme_classic(base_size = 13) +
+  labs(
+    title = "Response Time on Invalid Trials by Distractor",
+    x = "Distractor",
+    y = "Response Time (s)"
+  ) +
+  scale_x_discrete(labels = c("Zero", "One\nNear", "One\nFar", "Three")) +
+  scale_fill_manual(values = c("Front" = "#00FFFF", "Rear" = "#FF4500")) +
+  scale_color_manual(values = c("Front" = "#00FFFF", "Rear" = "#FF4500")) +
+  ylim(0.3, 2.7)
+
+print(p_distractor)
+
+
+```
+
+
+```{r  Response time depending on distractor (valid and invalid trials)}
+summary_distractor <- df_success_trials %>%
+  group_by(cue, distractor, position) %>%
+  summarise(
+    median_RT = median(responseTime, na.rm = TRUE),
+    sd_RT     = sd(responseTime, na.rm = TRUE),
+    n         = n(),
+    se_RT     = sd_RT / sqrt(n),
+    ci_low    = median_RT - qt(.975, n - 1) * se_RT,
+    ci_high   = median_RT + qt(.975, n - 1) * se_RT,
+    .groups = "drop"
+  )
+
+# plot
+
+p_distractor <- ggplot(
+  df_success_trials,
+  aes(x = distractor, y = responseTime, fill = position)
+) +
+  
+  # Boxplots
+  geom_boxplot(
+    width = 0.2,
+    outlier.shape = NA,
+    alpha = 1,
+    position = position_dodge(width = 0.7)
+  ) +
+  
+  # Half-eye densities
+  stat_halfeye(
+    side = "right",
+    adjust = 0.7,
+    width = 0.5,
+    .width = 0,
+    justification = -0.3,
+    point_colour = NA,
+    alpha = 1,
+    aes(fill = position),
+    position = position_dodge(width = 0.7)
+  ) +
+  
+  # Jittered points
+  geom_point(
+    aes(color = position),
+    alpha = 0.5,
+    size = 1.5,
+    position = position_jitterdodge(
+      jitter.width = 0.1,
+      dodge.width = 0.7,
+      seed = 123
+    )
+  ) +
+  
+  # Median lines
+
+    geom_line(
+    data = summary_distractor,
+    aes(x = distractor, y = median_RT, group = position),
+    color = "black",
+    linewidth = 1,
+    position = position_dodge(width = 0.7),
+    inherit.aes = FALSE
+  ) +
+  
+  # Create the two panels
+  facet_wrap(~ cue, nrow = 1) +
+  
+  # Styling
+  theme_classic(base_size = 13) +
+  labs(
+    title = "Response Time by Distractor and Cue",
+    x = "Distractor",
+    y = "Response Time (s)"
+  ) +
+  scale_x_discrete(labels = c("Zero", "One\nNear", "One\nFar", "Three")) +
+  scale_fill_manual(values = c("Front" = "#00FFFF", "Rear" = "#FF4500")) +
+  scale_color_manual(values = c("Front" = "#00FFFF", "Rear" = "#FF4500")) +
+  #ylim(0.3, 2.7)   # ensures identical y-axis
+  scale_y_continuous(
+  limits = c(0.3, 3.3),
+  breaks = seq(0.5, 3, by = 0.5)
+)
+
+
+
+print(p_distractor)
+
+ggsave("distAndCueRT.svg", plot = p_distractor, width = 8, height = 6)
+
+
+
+```
+
+```{r intercation plot}
+summary_interaction <- df_success_trials %>%
+  group_by(position, cue, distractor) %>%
+  summarise(
+    mean_RT = mean(responseTime, na.rm = TRUE),
+    se_RT = sd(responseTime, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
+  )
+
+p_interaction <- ggplot(summary_interaction,
+       aes(x = distractor,
+           y = mean_RT,
+           color = cue,
+           group = cue)) +
+  
+  geom_line(linewidth = 1) +
+  
+  geom_point(size = 3) +
+  
+  geom_errorbar(
+    aes(
+      ymin = mean_RT - se_RT,
+      ymax = mean_RT + se_RT
+    ),
+    width = 0.1
+  ) +
+  
+  facet_wrap(~ position) +
+  
+  theme_classic(base_size = 13) +
+  
+  labs(
+    title = "Interaction of Cue and Distractor on Response Time",
+    x = "Distractor",
+    y = "Mean Response Time (s)",
+    color = "Cue"
+  ) +
+  
+  scale_x_discrete(labels = c("Zero", "One\nNear", "One\nFar", "Three")) +
+  
+  scale_color_manual(values = c(
+    "Valid" = "#1f77b4",
+    "Invalid" = "#d62728"
+  ))
+
+print(p_interaction)
+
+```
+
+```{r Global Reaction Time analysis}
+#descriptive statistics
+
+describeBy(df_success_trials$responseTime, df_success_trials$cue)
+describeBy(df_success_trials$responseTime, df_success_trials$distractor)
+describeBy(df_success_trials$responseTime, df_success_trials$position)
+
+################# ________________Anova reaction time___________________________
+# Table 2 : Type III Repeated-Measures ANOVA for all reaction time
+modelRT <- aov_ez(
+  id = "participant",                 # subject identifier
+  dv = "responseTime",                 # dependent variable
+  data = df_success_trials,                  # your dataset
+  within = c("cue", "position", "distractor") # repeated factors
+)
+summary(modelRT)
+effectsize::eta_squared(modelRT)
+
+
+################# ________________Post-hoc RT___________________________________
+
+#cue
+m_cue <- lmer(responseTime ~ cue + (1 | participant), data = df_success_trials)
+emm1 <- emmeans(m_cue, ~ cue) #Get Estimated Marginal Means (EMMs)
+pairs(emm1, adjust = "none")#Perform Pairwise Post Hoc Comparisons
+
+#distractor 
+m_distractor2 <- lmer(responseTime ~ distractor + (1 | participant), data = df_success_trials)
+emm <- emmeans(m_distractor2, ~ distractor) 
+pairs(emm, adjust = "none") 
+
+#position
+m_pos <- lmer(responseTime ~ position + (1 | participant), data = df_success_trials)
+emm2 <- emmeans(m_pos, ~ position) #Get Estimated Marginal Means (EMMs)
+pairs(emm2, adjust = "none")#Perform Pairwise Post Hoc Comparisons
+```
+
+```{r Global Accuracy analysis}
+#descriptive statistics
+describeBy(df_accuracy$accuracy, df_accuracy$cue)
+describeBy(df_accuracy$accuracy, df_accuracy$distractor)
+describeBy(df_accuracy$accuracy, df_accuracy$position)
+
+#Table 3. Type III Analysis of Variance Table for Accuracy
+modelAC <- aov_ez(
+  id = "participant",                 
+  dv = "accuracy",                 
+  data = df_accuracy,                  
+  within = c("cue", "position", "distractor") 
+)
+summary(modelAC)
+effectsize::eta_squared(modelAC)
+
+
+################# ________________post-hoc AC___________________________________
+
+m_cue10 <- lmer(response_time ~ cue + (1 | participant), data = df_accuracy)
+emm10 <- emmeans(m_cue10, ~ cue) #Get Estimated Marginal Means (EMMs)
+pairs(emm10, adjust = "none")#Perform Pairwise Post Hoc Comparisons
+
+m_dist10 <- lmer(response_time ~ distractor + (1 | participant), data = df_accuracy)
+emmd10 <- emmeans(m_dist10, ~ distractor) #Get Estimated Marginal Means (EMMs)
+pairs(emmd10, adjust = "none")#Perform Pairwise Post Hoc Comparisons
+
+```
+
+
+```{r Front Reaction time : Table 4 Type II Analysis of Variance Table with Satterthwaite's method for front reaction time}
+#Descriptive stats
+describeBy(df_RT_front$responseTime, df_RT_front$distractor)
+describeBy(df_RT_front$responseTime, df_RT_front$cue)
+
+#Table 4. Type II Analysis of Variance Table with Satterthwaite's method for front reaction time
+# use of linear mixed models
+m9_front=lmer(responseTime ~ distractor * cue +(1 |participant), data = df_RT_front)
+anova(m9_front, type = 2)
+effectsize::eta_squared(m9_front)
+
+
+################# ________________post-hoc Cue__________________________________
+m_cue2 <- lmer(responseTime ~ cue + (1 | participant), data = df_RT_front)
+emm <- emmeans(m_cue2, ~ cue) #Get Estimated Marginal Means (EMMs)
+pairs(emm, adjust = "none")#Perform Pairwise Post Hoc Comparisons
+
+
+```
+
+
+```{r Front Reaction time distractor recategorized : Table 5. Type II Analysis of Variance Table with Satterthwaite's method for front reaction time distractor recategorised}
+describeBy(df_recategorized_RT_front$responseTime, df_recategorized_RT_front$distractor_react)
+
+#Table 5. Type II Analysis of Variance Table with Satterthwaite's method 
+#for front reaction time distractor recategorised
+
+m_frontR=lmer(responseTime ~ cue * distractor_react +(1 |participant), data = df_recategorized_RT_front) 
+anova(m_frontR, type = 2)
+effectsize::eta_squared(m_frontR)
+
+################# ________________post-hoc ___________________________
+m_cue2 <- lmer(responseTime ~ cue + (1 | participant), data = df_recategorized_RT_front)
+emm <- emmeans(m_cue2, ~ cue) #Get Estimated Marginal Means (EMMs)
+pairs(emm, adjust = "none")#Perform Pairwise Post Hoc Comparisons
+
+
+m_dist1 <- lmer(responseTime ~ distractor_react + (1 | participant), data = df_recategorized_RT_front)
+emm_dist1 <- emmeans(m_dist1, ~ distractor_react) #Get Estimated Marginal Means (EMMs)
+pairs(emm_dist1, adjust = "none")#Perform Pairwise Post Hoc Comparisons
+
+
+```
+
+
+```{r Front Accuracy}
+#Descriptive stats
+describeBy(df_acc_front$accuracy, df_acc_front$distractor)
+
+
+#linear mixed model without distractor recategorisation of accuracy
+m12_front=lmer(accuracy ~  cue * distractor +(1 |participant), data = df_acc_front) 
+anova(m12_front, type = 2)
+effectsize::eta_squared(m12_front)
+
+#### no need for comparison because no signicative main effect
+
+```
+
+
+```{r Front Accuracy distractor recategorized : Table 6. Type II Analysis of Variance Table with Satterthwaite's method for front recategorized accuracy}
+describeBy(df_front_acc_recat$accuracy, df_front_acc_recat$distractor1)
+
+##Table 6. Type II Analysis of Variance Table with Satterthwaite's method for 
+#front recategorized accuracy
+mrecat_front=lmer(accuracy ~ 1 + cue * distractor1 +(1 |participant), data = df_front_acc_recat) 
+anova(mrecat_front, type = 2)
+effectsize::eta_squared(m12_front)
+
+#### no need for comparison because no signicative main effect
+
+```
+
+
+```{r Rear Reaction Time analysis : Table 7. Type II Analysis of Variance Table with Satterthwaite's method for rear reaction time}
+#Descriptive stats
+describeBy(df_RT_rear$responseTime, df_RT_rear$distractor)
+describeBy(df_RT_rear$responseTime, df_RT_rear$cue)
+describeBy(df_RT_rear_val$responseTime, df_RT_rear_val$distractor)
+
+#Table 7. Type II Analysis of Variance Table with Satterthwaite's method 
+#for rear reaction time
+m10_rear = lmer(responseTime ~ 1 + cue * distractor +(1 |participant), data = df_RT_rear)
+anova(m10_rear, type = 2)
+effectsize::eta_squared(m10_rear)
+
+################# ________________post-hoc Cue___________________________
+m4_cue <- lmer(responseTime ~ cue + (1 | participant), data = df_RT_rear)
+emm4cue <- emmeans(m4_cue, ~ cue)
+pairs(emm4cue, adjust = "none")
+
+
+################# ________________post-hoc Distractor___________________________
+m3_distractor <- lmer(responseTime ~ distractor*cue + (1 | participant), data = df_RT_rear)
+emm3 <- emmeans(m3_distractor, ~ distractor | cue)
+pairs(emm3, adjust = "none")
+
+```
+
+
+```{r Rear Accuracy : Table 8. Type II Analysis of Variance Table with Satterthwaite's method for rear accuracy }
+#Descriptive statistics
+describeBy(df_acc_rear$accuracy, df_acc_rear$cue)
+describeBy(df_acc_rear$accuracy, df_acc_rear$distractor)
+describeBy(df_acc_valid_rear$accuracy, df_acc_valid_rear$distractor)
+describeBy(df_acc_invalid_rear$accuracy, df_acc_invalid_rear$distractor)
+
+#Table 8. Type II Analysis of Variance Table with Satterthwaite's method 
+#for rear accuracy 
+m14_rear=lmer(accuracy ~  cue * distractor +(1 |participant), data = df_acc_rear) 
+anova(m14_rear, type = 2)
+effectsize::eta_squared(m14_rear)
+
+################# ________________post-hoc Distractor___________________________
+
+# lm because not enough variance between participant was reported
+#on cue
+m14_cue <- lmer(accuracy ~ cue +(1 |participant), data = df_acc_rear)
+emm14cue <- emmeans(m14_cue, ~ cue) 
+pairs(emm14cue, adjust = "none") 
+
+#on distractor valid condition
+m14_distractor <- lmer(accuracy ~ distractor*cue +(1 |participant), data = df_acc_rear)
+emm14 <- emmeans(m14_distractor, ~ distractor | cue) 
+pairs(emm14, adjust = "none") 
+
+
+```
+```{r  plot fig X. Accuracy plot for front }
+#### figure for accuracy front
+df_front <- df_full %>% filter(position == "Front")
+
+summary_front <- df_front %>%
+  group_by(cue, distractor) %>%
+  summarise(
+    mean_acc = mean(accuracy, na.rm = TRUE),
+    se_acc = sd(accuracy, na.rm = TRUE) / sqrt(n()),
+    .groups = 'drop'
+  )
+
+ggplot() +
+  # Points participants d'abord (en arrière-plan)
+   geom_point(
+  data = df_front,
+  aes(x = distractor, y = accuracy, shape = cue),
+  color = "black",
+  alpha = 0.30,
+  size = 1.2,
+  position = position_jitter(width = 0.15, seed = 123)
+) +
+  
+  # Barres d'erreur en PREMIER
+  geom_errorbar(
+    data = summary_front,
+    aes(x = distractor, y = mean_acc, 
+        ymin = mean_acc - se_acc, ymax = mean_acc + se_acc,
+        group = cue),
+    color = "black",
+    width = 0.2,
+    position = position_dodge(0.6),
+    size = 0.5
+  ) +
+  # Lignes de connexion
+  geom_line(
+    data = summary_front,
+    aes(x = distractor, y = mean_acc, 
+        group = cue, linetype = cue),
+    color = "black",
+    position = position_dodge(0.6)
+  ) +
+  # Points moyens par DESSUS (en dernier)
+  geom_point(
+    data = summary_front,
+    aes(x = distractor, y = mean_acc, shape = cue),
+    fill = "#00FFFF",
+    color = "black",
+    size = 4,
+    position = position_dodge(0.6)
+  ) +
+  theme_classic() +
+  labs(x = "Distractor", y = "Accuracy") +
+  scale_shape_manual(values = c("Valid" = 21, "Invalid" = 24)) +
+  scale_linetype_manual(values = c("Valid" = "solid", "Invalid" = "dashed")) +
+  scale_x_discrete(labels = c("Zero", "One\nNear", "One\nFar", "Three")) +
+  scale_y_continuous(limits = c(0.60, 1.0), 
+                     breaks = seq(0.60, 1.0, by = 0.05)) +
+  theme(legend.position = "top")
+
+
+
+```
+```{r plot plot fig X. Accuracy plot for front recategorized}
+###### accuracy front recat
+df_front <- df_full %>% filter(position == "Front")
+
+summary_front_recat <- df_recat_acc_f %>%
+  group_by(cue, distractor1) %>%
+  summarise(
+    mean_acc = mean(accuracy, na.rm = TRUE),
+    se_acc = sd(accuracy, na.rm = TRUE) / sqrt(n()),
+    .groups = 'drop'
+  )
+
+ggplot() +
+  # Points participants d'abord (en arrière-plan)
+  geom_point(
+  data = df_recat_acc_f,
+  aes(x = distractor1, y = accuracy, shape = cue),
+  color = "black",
+  alpha = 0.30,
+  size = 1.2,
+  position = position_jitter(width = 0.15, seed = 123)
+) +
+
+  # Barres d'erreur en PREMIER
+  geom_errorbar(
+    data = summary_front_recat,
+    aes(x = distractor1, y = mean_acc, 
+        ymin = mean_acc - se_acc, ymax = mean_acc + se_acc,
+        group = cue),
+    color = "black",
+    width = 0.2,
+    position = position_dodge(0.6),
+    size = 0.5
+  ) +
+  # Lignes de connexion
+  geom_line(
+    data = summary_front_recat,
+    aes(x = distractor1, y = mean_acc, 
+        group = cue, linetype = cue),
+    color = "black",
+    position = position_dodge(0.6)
+  ) +
+  # Points moyens par DESSUS (en dernier)
+  geom_point(
+    data = summary_front_recat,
+    aes(x = distractor1, y = mean_acc, shape = cue),
+    fill = "#00FFFF",
+    color = "black",
+    size = 4,
+    position = position_dodge(0.6)
+  ) +
+  theme_classic() +
+  labs(x = "Distractor", y = "Accuracy") +
+  scale_shape_manual(values = c("Valid" = 21, "Invalid" = 24)) +
+  scale_linetype_manual(values = c("Valid" = "solid", "Invalid" = "dashed")) +
+  scale_x_discrete(labels = c("Present", "Absent")) +
+  scale_y_continuous(limits = c(0.60, 1.0), 
+                     breaks = seq(0.60, 1.0, by = 0.05)) +
+  theme(legend.position = "top")
+
+```
+```{r plot figure 6. Accuracy results depending on cue and distractor in rear position}
+pd <- position_dodge(width = 0.6)
+
+# Create summary 
+summary_rear_acc <- df_acc_rear %>%
+  group_by(cue, distractor) %>%
+  summarise(
+    mean_acc = mean(accuracy, na.rm = TRUE),
+    se_acc = sd(accuracy, na.rm = TRUE) / sqrt(n()),
+    .groups = 'drop'
+  )
+
+ggplot() +
+  # participant points
+  geom_point(
+  data = df_acc_rear,
+  aes(x = distractor, y = accuracy, shape = cue),
+  color = "black",
+  alpha = 0.30,
+  size = 1.2,
+  position = position_jitter(width = 0.15, seed = 123)
+) +
+  # Error bars
+  geom_errorbar(
+    data = summary_rear_acc,
+    aes(x = distractor, y = mean_acc, 
+        ymin = mean_acc - se_acc, ymax = mean_acc + se_acc, group = cue),
+    color = "black",
+    width = 0.2,
+    size = 0.5,
+    position = pd
+  ) +
+  # lines
+  geom_line(
+    data = summary_rear_acc,
+    aes(x = distractor, y = mean_acc, group = cue, linetype = cue),
+    color = "black",
+    position = pd
+  ) +
+  # mean points
+  geom_point(
+    data = summary_rear_acc,
+    aes(
+      x = distractor,
+      y = mean_acc,
+      shape = cue,
+      group = cue
+    ),
+    fill = "#FF4500",
+    color = "black",
+    size = 4,
+    position = pd
+  ) +
+  
+  theme_classic() +
+  labs(x = "Distractor", y = "Accuracy") +
+  
+  scale_shape_manual(values = c(
+    "Valid" = 21,
+    "Invalid" = 24
+  )) +
+  
+  scale_linetype_manual(values = c(
+    "Valid" = "solid",
+    "Invalid" = "dashed"
+  )) +
+  
+  scale_x_discrete(labels = c("Zero", "One\nNear", "One\nFar", "Three")) +
+  
+  scale_y_continuous(
+    limits = c(0.60, 1.0),
+    breaks = seq(0.60, 1.0, by = 0.05)
+  ) +
+  
+  theme(legend.position = "top")
+
+
+```
+
+
+
+
+
+
+
+
+
