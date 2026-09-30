@@ -5,6 +5,9 @@ Twenty participants were asked to discriminate between 2 targets arranged in 4 l
 Our results confirm eye-tracking is a powerful tool in VR for quantifying attentional dynamics through overt gaze strategies. The behavioral and gaze data converge for targets appearing in rear or front space, suggesting that attentional orienting engages similar mechanisms of sensory competition and selection in a full 360° space (in both front and rear), supporting a functional continuity in space representation used to guide selective attention processes. 
 
 ## Overview
+
+
+The paper, video overview and additional details of the study can be found at:   https://joanllobera.github.io/attention-vr/ 
 This repository centralizes raw VR headset data, eye-tracking analyses, and reaction time data processing.
 
 It consists of three main components:
